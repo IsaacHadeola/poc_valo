@@ -1,544 +1,159 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Enrichissement Sirene</title>
-<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    font-family: 'DM Sans', 'Segoe UI', sans-serif;
-    background: #F8F7F4;
-    color: #2C2C2A;
-    min-height: 100vh;
-    padding: 16px;
-    font-size: 13px;
-  }
-
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #E0DED6;
-  }
-
-  .header-icon {
-    width: 28px; height: 28px;
-    background: #3C3489;
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-  }
-
-  .header-icon svg { width: 16px; height: 16px; fill: white; }
-
-  .header-title { font-size: 14px; font-weight: 600; color: #2C2C2A; }
-  .header-sub   { font-size: 11px; color: #888780; margin-top: 1px; }
-
-  .token-section {
-    background: #EEEDFE;
-    border: 1px solid #AFA9EC;
-    border-radius: 8px;
-    padding: 10px 12px;
-    margin-bottom: 14px;
-  }
-
-  .token-label {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
-    color: #3C3489; text-transform: uppercase; margin-bottom: 5px;
-  }
-
-  .token-row { display: flex; gap: 6px; }
-
-  input[type="password"], input[type="text"] {
-    flex: 1;
-    border: 1px solid #D3D1C7;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 12px;
-    background: white;
-    color: #2C2C2A;
-    outline: none;
-  }
-
-  input:focus { border-color: #3C3489; }
-
-  .btn {
-    padding: 6px 12px;
-    border-radius: 6px;
-    border: none;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.1s;
-    white-space: nowrap;
-  }
-
-  .btn:active { transform: scale(0.97); }
-  .btn-primary { background: #3C3489; color: white; }
-  .btn-primary:hover { opacity: 0.88; }
-  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-sm { padding: 4px 10px; font-size: 11px; }
-  .btn-outline { background: white; border: 1px solid #D3D1C7; color: #2C2C2A; }
-  .btn-outline:hover { background: #F1EFE8; }
-
-  .siren-display {
-    background: white;
-    border: 1px solid #E0DED6;
-    border-radius: 8px;
-    padding: 10px 12px;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .siren-label { font-size: 10px; color: #888780; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
-  .siren-value { font-size: 18px; font-weight: 600; color: #3C3489; font-family: monospace; letter-spacing: 0.05em; }
-  .siren-empty { font-size: 13px; color: #B4B2A9; font-style: italic; }
-
-  .btn-enrich {
-    background: #3C3489;
-    color: white;
-    padding: 8px 16px;
-    border-radius: 6px;
-    border: none;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: opacity 0.15s;
-  }
-
-  .btn-enrich:hover { opacity: 0.88; }
-  .btn-enrich:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .spinner {
-    width: 12px; height: 12px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    display: none;
-  }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .status {
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    margin-bottom: 12px;
-    display: none;
-  }
-
-  .status.success { background: #EAF3DE; color: #27500A; border: 1px solid #C0DD97; display: block; }
-  .status.error   { background: #FCEBEB; color: #791F1F; border: 1px solid #F7C1C1; display: block; }
-  .status.info    { background: #E6F1FB; color: #0C447C; border: 1px solid #B5D4F4; display: block; }
-
-  .results {
-    background: white;
-    border: 1px solid #E0DED6;
-    border-radius: 8px;
-    overflow: hidden;
-    margin-bottom: 14px;
-    display: none;
-  }
-
-  .results-header {
-    background: #F1EFE8;
-    padding: 7px 12px;
-    font-size: 10px;
-    font-weight: 600;
-    color: #5F5E5A;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    border-bottom: 1px solid #E0DED6;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .result-row {
-    display: flex;
-    padding: 7px 12px;
-    border-bottom: 1px solid #F1EFE8;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .result-row:last-child { border-bottom: none; }
-
-  .result-key {
-    font-size: 11px;
-    color: #888780;
-    width: 140px;
-    flex-shrink: 0;
-    padding-top: 1px;
-  }
-
-  .result-val {
-    font-size: 12px;
-    color: #2C2C2A;
-    font-weight: 500;
-    flex: 1;
-  }
-
-  .badge-actif   { background: #EAF3DE; color: #27500A; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
-  .badge-inactif { background: #FCEBEB; color: #791F1F; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
-
-  .inject-section {
-    display: none;
-  }
-
-  .inject-title {
-    font-size: 10px; font-weight: 600; color: #5F5E5A;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    margin-bottom: 8px;
-  }
-
-  .mapping-row {
-    display: flex; align-items: center; gap: 6px;
-    margin-bottom: 6px;
-  }
-
-  .mapping-label { font-size: 11px; color: #5F5E5A; width: 140px; flex-shrink: 0; }
-
-  select {
-    flex: 1;
-    border: 1px solid #D3D1C7;
-    border-radius: 5px;
-    padding: 4px 8px;
-    font-size: 11px;
-    background: white;
-    color: #2C2C2A;
-    outline: none;
-  }
-
-  select:focus { border-color: #3C3489; }
-
-  .btn-inject {
-    width: 100%;
-    background: #085041;
-    color: white;
-    padding: 9px;
-    border-radius: 6px;
-    border: none;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    margin-top: 10px;
-    transition: opacity 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-
-  .btn-inject:hover { opacity: 0.88; }
-  .btn-inject:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .footer {
-    font-size: 10px;
-    color: #B4B2A9;
-    text-align: center;
-    margin-top: 8px;
-  }
-</style>
+  <meta charset="utf-8" />
+  <title>Validation SIREN</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 16px; }
+    button { padding: 10px 14px; cursor: pointer; }
+    .info { margin-top: 12px; font-size: 14px; }
+    .ok { color: green; }
+    .ko { color: crimson; }
+  </style>
 </head>
 <body>
+  <h2>Validation SIREN</h2>
 
-<div class="header">
-  <div class="header-icon">
-    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
-    </svg>
-  </div>
-  <div>
-    <div class="header-title">Enrichissement Sirene</div>
-    <div class="header-sub">API INSEE — Données légales entreprise</div>
-  </div>
-</div>
+  <button id="checkAll">Contrôler tous les SIREN</button>
+  <button id="checkSelected">Contrôler la ligne sélectionnée</button>
 
-<!-- Token -->
-<div class="token-section">
-  <div class="token-label">Token INSEE</div>
-  <div class="token-row">
-    <input type="password" id="tokenInput" placeholder="Collez votre token Bearer ici…" />
-    <button class="btn btn-outline btn-sm" onclick="toggleToken()">Voir</button>
-  </div>
-</div>
+  <div id="status" class="info"></div>
 
-<!-- SIREN détecté -->
-<div class="siren-display">
-  <div>
-    <div class="siren-label">SIREN sélectionné</div>
-    <div id="sirenVal" class="siren-empty">En attente de sélection…</div>
-  </div>
-  <button class="btn-enrich" id="enrichBtn" onclick="fetchSirene()" disabled>
-    <div class="spinner" id="spinner"></div>
-    <span id="enrichLabel">Enrichir</span>
-  </button>
-</div>
-
-<!-- Statut -->
-<div class="status" id="statusBox"></div>
-
-<!-- Résultats -->
-<div class="results" id="resultsBox">
-  <div class="results-header">
-    <span>Données récupérées</span>
-    <span id="dateRecup" style="font-weight:400;color:#888780;"></span>
-  </div>
-  <div id="resultsRows"></div>
-</div>
-
-<!-- Injection dans Grist -->
-<div class="inject-section" id="injectSection">
-  <div class="inject-title">Injecter dans la table Grist</div>
-
-  <div class="mapping-row">
-    <div class="mapping-label">Nom légal →</div>
-    <select id="map_nom"><option value="">— ne pas injecter —</option></select>
-  </div>
-  <div class="mapping-row">
-    <div class="mapping-label">Forme juridique →</div>
-    <select id="map_forme"><option value="">— ne pas injecter —</option></select>
-  </div>
-  <div class="mapping-row">
-    <div class="mapping-label">Date création →</div>
-    <select id="map_date"><option value="">— ne pas injecter —</option></select>
-  </div>
-  <div class="mapping-row">
-    <div class="mapping-label">Code NAF →</div>
-    <select id="map_naf"><option value="">— ne pas injecter —</option></select>
-  </div>
-  <div class="mapping-row">
-    <div class="mapping-label">Tranche effectif →</div>
-    <select id="map_effectif"><option value="">— ne pas injecter —</option></select>
-  </div>
-  <div class="mapping-row">
-    <div class="mapping-label">Statut →</div>
-    <select id="map_statut"><option value="">— ne pas injecter —</option></select>
-  </div>
-  <div class="mapping-row">
-    <div class="mapping-label">Commune siège →</div>
-    <select id="map_commune"><option value="">— ne pas injecter —</option></select>
-  </div>
-
-  <button class="btn-inject" id="injectBtn" onclick="injectData()">
-    ↓ Injecter les données dans Grist
-  </button>
-</div>
-
-<div class="footer">Widget POC Innovation DGRI · Données INSEE Sirene</div>
-
-<script>
-let currentRecord = null;
-let fetchedData   = null;
-let tableColumns  = [];
-let currentRowId  = null;
-
-const FORMES = {
-  "1000":"Entrepreneur individuel","5191":"SAS","5499":"SARL",
-  "5308":"SA","6540":"EPA","7344":"EPSCP","7343":"EPST",
-  "7345":"EPIC","9220":"Association loi 1901"
-};
-
-const EFFECTIFS = {
-  "00":"0","01":"1-2","02":"3-5","03":"6-9","11":"10-19",
-  "12":"20-49","21":"50-99","22":"100-199","31":"200-249",
-  "32":"250-499","41":"500-999","42":"1000-1999",
-  "51":"2000-4999","52":"5000-9999","53":"10000+"
-};
-
-function toggleToken() {
-  const inp = document.getElementById('tokenInput');
-  inp.type = inp.type === 'password' ? 'text' : 'password';
-}
-
-function showStatus(msg, type) {
-  const box = document.getElementById('statusBox');
-  box.className = 'status ' + type;
-  box.textContent = msg;
-}
-
-function hideStatus() {
-  document.getElementById('statusBox').style.display = 'none';
-}
-
-async function fetchSirene() {
-  const token = document.getElementById('tokenInput').value.trim();
-  if (!token) { showStatus('Veuillez saisir votre token INSEE.', 'error'); return; }
-  if (!currentRecord) { showStatus('Aucun enregistrement sélectionné.', 'error'); return; }
-
-  const siren = (currentRecord.siren_startup || currentRecord.siren || '').toString().replace(/\s/g,'');
-  if (!siren || siren.length !== 9) { showStatus('SIREN invalide (9 chiffres attendus).', 'error'); return; }
-
-  const btn = document.getElementById('enrichBtn');
-  const spinner = document.getElementById('spinner');
-  const label = document.getElementById('enrichLabel');
-  btn.disabled = true;
-  spinner.style.display = 'block';
-  label.textContent = 'Chargement…';
-  hideStatus();
-
-  try {
-    const resp = await fetch(
-      `https://api.insee.fr/entreprises/sirene/V3.11/siren/${siren}`,
-      { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } }
-    );
-
-    if (resp.status === 404) { showStatus('SIREN introuvable dans la base Sirene.', 'error'); return; }
-    if (resp.status === 401) { showStatus('Token invalide ou expiré.', 'error'); return; }
-    if (!resp.ok) { showStatus(`Erreur API : ${resp.status}`, 'error'); return; }
-
-    const json = await resp.json();
-    const ul = json.uniteLegale;
-    const periode = ul.periodesUniteLegale?.[0] || {};
-
-    fetchedData = {
-      nom:      ul.denominationUniteLegale || (ul.prenom1UniteLegale + ' ' + ul.nomUniteLegale) || '—',
-      forme:    FORMES[periode.categorieJuridiqueUniteLegale] || periode.categorieJuridiqueUniteLegale || '—',
-      date:     ul.dateCreationUniteLegale || '—',
-      naf:      periode.activitePrincipaleUniteLegale || '—',
-      effectif: EFFECTIFS[ul.trancheEffectifsUniteLegale] || ul.trancheEffectifsUniteLegale || 'NC',
-      statut:   periode.etatAdministratifUniteLegale === 'A' ? 'Active' : 'Cessée',
-      commune:  ul.etablissementSiege?.adresseEtablissement?.libelleCommuneEtablissement || '—',
-    };
-
-    renderResults(fetchedData);
-    showStatus('Données récupérées avec succès.', 'success');
-
-  } catch(e) {
-    showStatus('Erreur réseau. Vérifiez votre connexion.', 'error');
-  } finally {
-    btn.disabled = false;
-    spinner.style.display = 'none';
-    label.textContent = 'Enrichir';
-  }
-}
-
-function renderResults(d) {
-  const rows = [
-    ['Dénomination', d.nom],
-    ['Forme juridique', d.forme],
-    ['Date de création', d.date],
-    ['Code NAF / APE', d.naf],
-    ['Tranche effectifs', d.effectif + ' salariés'],
-    ['Statut', d.statut],
-    ['Commune du siège', d.commune],
-  ];
-
-  document.getElementById('resultsRows').innerHTML = rows.map(([k,v]) => `
-    <div class="result-row">
-      <div class="result-key">${k}</div>
-      <div class="result-val">
-        ${k === 'Statut'
-          ? `<span class="${v === 'Active' ? 'badge-actif' : 'badge-inactif'}">${v}</span>`
-          : v}
-      </div>
-    </div>
-  `).join('');
-
-  document.getElementById('dateRecup').textContent = new Date().toLocaleTimeString('fr-FR');
-  document.getElementById('resultsBox').style.display = 'block';
-  document.getElementById('injectSection').style.display = 'block';
-}
-
-async function injectData() {
-  if (!fetchedData || !currentRowId) return;
-
-  const mappings = {
-    map_nom:     'nom',
-    map_forme:   'forme',
-    map_date:    'date',
-    map_naf:     'naf',
-    map_effectif:'effectif',
-    map_statut:  'statut',
-    map_commune: 'commune',
-  };
-
-  const patch = {};
-  for (const [selectId, dataKey] of Object.entries(mappings)) {
-    const col = document.getElementById(selectId).value;
-    if (col) patch[col] = fetchedData[dataKey];
-  }
-
-  if (Object.keys(patch).length === 0) {
-    showStatus('Aucune colonne cible sélectionnée.', 'error');
-    return;
-  }
-
-  try {
-    await grist.selectedTable.setRecord(currentRowId, patch);
-    showStatus('Données injectées dans Grist avec succès !', 'success');
-  } catch(e) {
-    showStatus('Erreur lors de l\'injection : ' + e.message, 'error');
-  }
-}
-
-function populateSelects(cols) {
-  const selects = ['map_nom','map_forme','map_date','map_naf','map_effectif','map_statut','map_commune'];
-  const defaults = {
-    map_nom: ['nom_legal','nom','denomination'],
-    map_forme: ['forme_juridique','forme','statut_juridique'],
-    map_date: ['date_creation','date_creation_insee'],
-    map_naf: ['code_naf','naf','ape'],
-    map_effectif: ['effectif','tranche_effectif'],
-    map_statut: ['statut_insee','statut'],
-    map_commune: ['commune_siege','commune','ville'],
-  };
-
-  selects.forEach(id => {
-    const sel = document.getElementById(id);
-    sel.innerHTML = '<option value="">— ne pas injecter —</option>';
-    cols.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c; opt.textContent = c;
-      if ((defaults[id] || []).includes(c.toLowerCase())) opt.selected = true;
-      sel.appendChild(opt);
+  <script>
+    grist.ready({
+      requiredAccess: "full",
+      columns: [
+        "siren_declare",
+        "validite_siren",
+        "raison_sociale_api",
+        "code_ape_api",
+        "etat_administratif_api",
+        "date_controle_siren",
+        "message_controle_siren"
+      ]
     });
-  });
-}
 
-// Grist integration
-grist.ready({ requiredAccess: 'full' });
+    let records = [];
+    let selectedRecord = null;
+    let mappings = null;
 
-grist.onRecord(async (record, mappings) => {
-  currentRecord = record;
-  currentRowId  = record.id;
+    grist.onRecords(function(data, map) {
+      records = data || [];
+      mappings = map;
+    });
 
-  const siren = (record.siren_startup || record.siren || '').toString().replace(/\s/g,'');
-  const sirenEl = document.getElementById('sirenVal');
+    grist.onRecord(function(record) {
+      selectedRecord = record;
+    });
 
-  if (siren && siren.length === 9) {
-    sirenEl.className = 'siren-value';
-    sirenEl.textContent = siren.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
-    document.getElementById('enrichBtn').disabled = false;
-  } else {
-    sirenEl.className = 'siren-empty';
-    sirenEl.textContent = 'Aucun SIREN valide sur cette ligne';
-    document.getElementById('enrichBtn').disabled = true;
-  }
+    function cleanSiren(value) {
+      return String(value || "").replace(/\D/g, "");
+    }
 
-  fetchedData = null;
-  document.getElementById('resultsBox').style.display = 'none';
-  document.getElementById('injectSection').style.display = 'none';
-  hideStatus();
-});
+    async function checkSiren(siren) {
+      const cleaned = cleanSiren(siren);
 
-grist.onRecords(async (records) => {
-  if (records.length > 0) {
-    tableColumns = Object.keys(records[0]).filter(k => k !== 'id');
-    populateSelects(tableColumns);
-  }
-});
-</script>
+      if (!cleaned) {
+        return {
+          validite_siren: "SIREN manquant",
+          message_controle_siren: "Aucun SIREN renseigné"
+        };
+      }
+
+      if (!/^\d{9}$/.test(cleaned)) {
+        return {
+          validite_siren: "Format invalide",
+          message_controle_siren: "Le SIREN doit contenir exactement 9 chiffres"
+        };
+      }
+
+      const url = "https://recherche-entreprises.api.gouv.fr/search?q=" + encodeURIComponent(cleaned);
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          return {
+            validite_siren: "Erreur API",
+            message_controle_siren: "Erreur HTTP " + response.status
+          };
+        }
+
+        const data = await response.json();
+        const results = data.results || [];
+
+        const exact = results.find(r => String(r.siren) === cleaned);
+
+        if (!exact) {
+          return {
+            validite_siren: "SIREN introuvable",
+            message_controle_siren: "Aucun résultat exact trouvé"
+          };
+        }
+
+        return {
+          validite_siren: "SIREN valide",
+          raison_sociale_api: exact.nom_complet || exact.nom_raison_sociale || "",
+          code_ape_api: exact.activite_principale || "",
+          etat_administratif_api: exact.etat_administratif || "",
+          message_controle_siren: "Résultat exact trouvé"
+        };
+
+      } catch (e) {
+        return {
+          validite_siren: "Erreur API",
+          message_controle_siren: e.message
+        };
+      }
+    }
+
+    async function updateRecord(record) {
+      const siren = record.siren_declare;
+      const result = await checkSiren(siren);
+
+      const now = new Date().toISOString();
+
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", grist.getSelectedTableIdSync(), record.id, {
+          validite_siren: result.validite_siren || "",
+          raison_sociale_api: result.raison_sociale_api || "",
+          code_ape_api: result.code_ape_api || "",
+          etat_administratif_api: result.etat_administratif_api || "",
+          date_controle_siren: now,
+          message_controle_siren: result.message_controle_siren || ""
+        }]
+      ]);
+    }
+
+    async function checkAll() {
+      document.getElementById("status").textContent = "Contrôle en cours...";
+      let count = 0;
+
+      for (const record of records) {
+        await updateRecord(record);
+        count++;
+      }
+
+      document.getElementById("status").innerHTML =
+        '<span class="ok">Contrôle terminé : ' + count + ' ligne(s) traitée(s).</span>';
+    }
+
+    async function checkSelected() {
+      if (!selectedRecord || !selectedRecord.id) {
+        document.getElementById("status").innerHTML =
+          '<span class="ko">Aucune ligne sélectionnée.</span>';
+        return;
+      }
+
+      document.getElementById("status").textContent = "Contrôle de la ligne sélectionnée...";
+      await updateRecord(selectedRecord);
+
+      document.getElementById("status").innerHTML =
+        '<span class="ok">Ligne sélectionnée contrôlée.</span>';
+    }
+
+    document.getElementById("checkAll").addEventListener("click", checkAll);
+    document.getElementById("checkSelected").addEventListener("click", checkSelected);
+  </script>
 </body>
 </html>
