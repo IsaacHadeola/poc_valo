@@ -6,12 +6,13 @@
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <style>
     body { font-family: sans-serif; padding: 16px; }
-    button { padding: 10px 14px; cursor: pointer; }
+    button { padding: 10px 14px; cursor: pointer; margin-right: 6px; }
     .info { margin-top: 12px; font-size: 14px; }
     .ok { color: green; }
     .ko { color: crimson; }
   </style>
 </head>
+
 <body>
   <h2>Validation SIREN</h2>
 
@@ -25,6 +26,7 @@
       requiredAccess: "full",
       columns: [
         "siren_declare",
+        "siren_api",
         "validite_siren",
         "raison_sociale_api",
         "code_ape_api",
@@ -36,15 +38,18 @@
 
     let records = [];
     let selectedRecord = null;
-    let mappings = null;
+    let tableId = null;
 
-    grist.onRecords(function(data, map) {
+    grist.onRecords(function(data) {
       records = data || [];
-      mappings = map;
     });
 
     grist.onRecord(function(record) {
       selectedRecord = record;
+    });
+
+    grist.onOptions(function(options, interaction) {
+      tableId = interaction.tableId;
     });
 
     function cleanSiren(value) {
@@ -56,6 +61,7 @@
 
       if (!cleaned) {
         return {
+          siren_api: "",
           validite_siren: "SIREN manquant",
           message_controle_siren: "Aucun SIREN renseigné"
         };
@@ -63,17 +69,22 @@
 
       if (!/^\d{9}$/.test(cleaned)) {
         return {
+          siren_api: "",
           validite_siren: "Format invalide",
           message_controle_siren: "Le SIREN doit contenir exactement 9 chiffres"
         };
       }
 
-      const url = "https://recherche-entreprises.api.gouv.fr/search?q=" + encodeURIComponent(cleaned);
+      const url =
+        "https://recherche-entreprises.api.gouv.fr/search?q=" +
+        encodeURIComponent(cleaned);
 
       try {
         const response = await fetch(url);
+
         if (!response.ok) {
           return {
+            siren_api: "",
             validite_siren: "Erreur API",
             message_controle_siren: "Erreur HTTP " + response.status
           };
@@ -82,25 +93,76 @@
         const data = await response.json();
         const results = data.results || [];
 
-        const exact = results.find(r => String(r.siren) === cleaned);
-
-        if (!exact) {
+        if (results.length === 0) {
           return {
+            siren_api: "",
             validite_siren: "SIREN introuvable",
-            message_controle_siren: "Aucun résultat exact trouvé"
+            message_controle_siren: "Aucun résultat retourné par l'API"
+          };
+        }
+
+        const result = results[0];
+        const sirenRetourne = String(result.siren || "");
+        const nbEtablissements = Number(result.nombre_etablissements || 0);
+        const nbEtablissementsOuverts = Number(result.nombre_etablissements_ouverts || 0);
+
+        const raisonSociale =
+          result.nom_complet ||
+          result.nom_raison_sociale ||
+          "";
+
+        const codeApe = result.activite_principale || "";
+        const etatAdministratif = result.etat_administratif || "";
+
+        if (sirenRetourne !== cleaned) {
+          return {
+            siren_api: sirenRetourne,
+            validite_siren: "Discordance",
+            raison_sociale_api: raisonSociale,
+            code_ape_api: codeApe,
+            etat_administratif_api: etatAdministratif,
+            message_controle_siren:
+              "Le SIREN retourné par l'API diffère du SIREN déclaré"
+          };
+        }
+
+        if (nbEtablissements === 0 && nbEtablissementsOuverts === 0 && !raisonSociale) {
+          return {
+            siren_api: sirenRetourne,
+            validite_siren: "SIREN inexploitable",
+            raison_sociale_api: "",
+            code_ape_api: "",
+            etat_administratif_api: "",
+            message_controle_siren:
+              "SIREN retourné par l'API mais sans établissement ni raison sociale exploitable"
+          };
+        }
+
+        if (nbEtablissementsOuverts === 0) {
+          return {
+            siren_api: sirenRetourne,
+            validite_siren: "SIREN sans établissement ouvert",
+            raison_sociale_api: raisonSociale,
+            code_ape_api: codeApe,
+            etat_administratif_api: etatAdministratif,
+            message_controle_siren:
+              "SIREN trouvé, mais aucun établissement ouvert n'est recensé"
           };
         }
 
         return {
+          siren_api: sirenRetourne,
           validite_siren: "SIREN valide",
-          raison_sociale_api: exact.nom_complet || exact.nom_raison_sociale || "",
-          code_ape_api: exact.activite_principale || "",
-          etat_administratif_api: exact.etat_administratif || "",
-          message_controle_siren: "Résultat exact trouvé"
+          raison_sociale_api: raisonSociale,
+          code_ape_api: codeApe,
+          etat_administratif_api: etatAdministratif,
+          message_controle_siren:
+            "Correspondance exacte avec au moins un établissement ouvert"
         };
 
       } catch (e) {
         return {
+          siren_api: "",
           validite_siren: "Erreur API",
           message_controle_siren: e.message
         };
@@ -108,13 +170,18 @@
     }
 
     async function updateRecord(record) {
-      const siren = record.siren_declare;
-      const result = await checkSiren(siren);
+      if (!tableId) {
+        document.getElementById("status").innerHTML =
+          '<span class="ko">Erreur : table source non détectée.</span>';
+        return;
+      }
 
+      const result = await checkSiren(record.siren_declare);
       const now = new Date().toISOString();
 
       await grist.docApi.applyUserActions([
-        ["UpdateRecord", grist.getSelectedTableIdSync(), record.id, {
+        ["UpdateRecord", tableId, record.id, {
+          siren_api: result.siren_api || "",
           validite_siren: result.validite_siren || "",
           raison_sociale_api: result.raison_sociale_api || "",
           code_ape_api: result.code_ape_api || "",
@@ -145,7 +212,9 @@
         return;
       }
 
-      document.getElementById("status").textContent = "Contrôle de la ligne sélectionnée...";
+      document.getElementById("status").textContent =
+        "Contrôle de la ligne sélectionnée...";
+
       await updateRecord(selectedRecord);
 
       document.getElementById("status").innerHTML =
