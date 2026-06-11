@@ -116,7 +116,7 @@
         };
       }
 
-      if (!/^\d{9}$/.test(cleaned)) {
+      if (!/^[0-9]{9}$/.test(cleaned)) {
         return {
           validite_siren: "Format invalide",
           message_controle_siren: "Le SIREN doit contenir exactement 9 chiffres"
