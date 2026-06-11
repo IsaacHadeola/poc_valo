@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Validation SIREN INSEE</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 16px; }
+    input { width: 100%; padding: 8px; margin: 8px 0; box-sizing: border-box; }
+    button { padding: 10px 14px; cursor: pointer; margin-right: 6px; margin-top: 6px; }
+    .info { margin-top: 12px; font-size: 14px; }
+    .ok { color: green; }
+    .ko { color: crimson; }
+    .hint { font-size: 13px; color: #666; }
+  </style>
+</head>
+
+<body>
+  <h2>Validation SIREN INSEE</h2>
+
+  <label for="apiKey">Clé API INSEE</label>
+  <input id="apiKey" type="password" placeholder="X-INSEE-Api-Key-Integration" />
+
+  <div class="hint">
+    La clé est utilisée uniquement dans votre navigateur pour appeler l’API INSEE.
+    Ne l’écrivez pas dans le fichier GitHub.
+  </div>
+
+  <button id="saveKey">Mémoriser la clé localement</button>
+  <button id="checkAll">Contrôler tous les SIREN</button>
+  <button id="checkSelected">Contrôler la ligne sélectionnée</button>
+
+  <div id="status" class="info"></div>
+
+  <script>
+    grist.ready({
+      requiredAccess: "full",
+      columns: [
+        "siren_declare",
+        "validite_siren",
+        "raison_sociale_api",
+        "code_ape_api",
+        "etat_administratif_api",
+        "categorie_entreprise_api",
+        "date_creation_api",
+        "date_controle_siren",
+        "message_controle_siren"
+      ]
+    });
+
+    let records = [];
+    let selectedRecord = null;
+    let tableId = null;
+
+    grist.onRecords(function(data) {
+      records = data || [];
+    });
+
+    grist.onRecord(function(record) {
+      selectedRecord = record;
+    });
+
+    grist.onOptions(function(options, interaction) {
+      if (interaction && interaction.tableId) {
+        tableId = interaction.tableId;
+      }
+    });
+
+    const apiKeyInput = document.getElementById("apiKey");
+    const savedKey = localStorage.getItem("insee_api_key");
+
+    if (savedKey) {
+      apiKeyInput.value = savedKey;
+    }
+
+    document.getElementById("saveKey").addEventListener("click", function() {
+      const key = apiKeyInput.value.trim();
+      if (!key) {
+        setStatus("Aucune clé à mémoriser.", "ko");
+        return;
+      }
+      localStorage.setItem("insee_api_key", key);
+      setStatus("Clé mémorisée localement dans ce navigateur.", "ok");
+    });
+
+    function setStatus(message, kind) {
+      const status = document.getElementById("status");
+      status.innerHTML =
+        '<span class="' + (kind || "") + '">' + message + '</span>';
+    }
+
+    function cleanSiren(value) {
+      // Supprime tout ce qui n'est pas un chiffre
+      const digits = String(value || "").replace(/\D/g, "");
+      // On n'accepte que exactement 9 chiffres — pas de padding, pas de troncature
+      return digits.length === 9 ? digits : digits;
+    }
+
+    function validateSirenFormat(cleaned) {
+      if (!cleaned) {
+        return { valid: false, validite: "SIREN manquant", message: "Aucun SIREN renseigné" };
+      }
+      if (!/^[0-9]{9}$/.test(cleaned)) {
+        return {
+          valid: false,
+          validite: "Format invalide",
+          message: "Le SIREN doit contenir exactement 9 chiffres (reçu : " + cleaned.length + " chiffre(s))"
+        };
+      }
+      return { valid: true };
+    }
+
+    function getCurrentPeriod(uniteLegale) {
+      const periodes = uniteLegale.periodesUniteLegale || [];
+      return periodes.find(p => p.dateFin === null) || periodes[0] || {};
+    }
+
+    async function checkSirenInsee(siren) {
+      const cleaned = cleanSiren(siren);
+      const apiKey = apiKeyInput.value.trim();
+
+      if (!apiKey) {
+        return {
+          validite_siren: "Clé API manquante",
+          message_controle_siren: "Renseigner la clé API INSEE dans le widget"
+        };
+      }
+
+      // Validation du format AVANT tout appel API
+      const formatCheck = validateSirenFormat(cleaned);
+      if (!formatCheck.valid) {
+        return {
+          validite_siren: formatCheck.validite,
+          message_controle_siren: formatCheck.message
+        };
+      }
+
+      const url =
+        "https://api.insee.fr/api-sirene/3.11/siren/" +
+        encodeURIComponent(cleaned);
+
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "X-INSEE-Api-Key-Integration": apiKey,
+            "Accept": "application/json"
+          }
+        });
+
+        if (response.status === 404) {
+          return {
+            validite_siren: "SIREN introuvable",
+            message_controle_siren: "Aucune unité légale trouvée pour ce SIREN"
+          };
+        }
+
+        if (response.status === 401 || response.status === 403) {
+          return {
+            validite_siren: "Erreur authentification",
+            message_controle_siren: "Clé API INSEE refusée ou non autorisée"
+          };
+        }
+
+        if (response.status === 429) {
+          return {
+            validite_siren: "Quota API atteint",
+            message_controle_siren: "Trop de requêtes vers l’API INSEE"
+          };
+        }
+
+        if (!response.ok) {
+          return {
+            validite_siren: "Erreur API",
+            message_controle_siren: "Erreur HTTP " + response.status
+          };
+        }
+
+        const data = await response.json();
+        const uniteLegale = data.uniteLegale;
+
+        if (!uniteLegale || String(uniteLegale.siren) !== cleaned) {
+          return {
+            validite_siren: "Discordance",
+            message_controle_siren: "La réponse INSEE ne correspond pas au SIREN déclaré"
+          };
+        }
+
+        const periode = getCurrentPeriod(uniteLegale);
+
+        const raisonSociale =
+          periode.denominationUniteLegale ||
+          [
+            periode.nomUniteLegale,
+            periode.prenom1UniteLegale
+          ].filter(Boolean).join(" ") ||
+          "";
+
+        const codeApe =
+          periode.activitePrincipaleUniteLegale ||
+          uniteLegale.activitePrincipaleNAF25UniteLegale ||
+          "";
+
+        const etatAdministratif =
+          periode.etatAdministratifUniteLegale || "";
+
+        const categorieEntreprise =
+          uniteLegale.categorieEntreprise || "";
+
+        const dateCreation =
+          uniteLegale.dateCreationUniteLegale || "";
+
+        return {
+          validite_siren: "SIREN valide",
+          raison_sociale_api: raisonSociale,
+          code_ape_api: codeApe,
+          etat_administratif_api: etatAdministratif,
+          categorie_entreprise_api: categorieEntreprise,
+          date_creation_api: dateCreation,
+          message_controle_siren: "SIREN trouvé dans l’API SIRENE INSEE"
+        };
+
+      } catch (e) {
+        return {
+          validite_siren: "Erreur API",
+          message_controle_siren: e.message
+        };
+      }
+    }
+
+    async function updateRecord(record) {
+      if (!tableId) {
+        setStatus("Erreur : table source non détectée.", "ko");
+        return;
+      }
+
+      const result = await checkSirenInsee(record.siren_declare);
+      const now = new Date().toISOString();
+
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", tableId, record.id, {
+          validite_siren: result.validite_siren || "",
+          raison_sociale_api: result.raison_sociale_api || "",
+          code_ape_api: result.code_ape_api || "",
+          etat_administratif_api: result.etat_administratif_api || "",
+          categorie_entreprise_api: result.categorie_entreprise_api || "",
+          date_creation_api: result.date_creation_api || "",
+          date_controle_siren: now,
+          message_controle_siren: result.message_controle_siren || ""
+        }]
+      ]);
+    }
+
+    async function checkAll() {
+      setStatus("Contrôle en cours...", "");
+
+      let count = 0;
+
+      for (const record of records) {
+        await updateRecord(record);
+        count++;
+      }
+
+      setStatus("Contrôle terminé : " + count + " ligne(s) traitée(s).", "ok");
+    }
+
+    async function checkSelected() {
+      if (!selectedRecord || !selectedRecord.id) {
+        setStatus("Aucune ligne sélectionnée.", "ko");
+        return;
+      }
+
+      setStatus("Contrôle de la ligne sélectionnée...", "");
+      await updateRecord(selectedRecord);
+      setStatus("Ligne sélectionnée contrôlée.", "ok");
+    }
+
+    document.getElementById("checkAll").addEventListener("click", checkAll);
+    document.getElementById("checkSelected").addEventListener("click", checkSelected);
+  </script>
+</body>
+</html>
